@@ -1,15 +1,13 @@
 
-<div align="center">
-	<h1>📁 Mini-Wiki CLI</h1>
+# 📁 Mini-Wiki CLI</h1>
   
-	<img src="https://img.shields.io/badge/CLI-Tool-blue?style=flat-square" alt="CLI Badge" />
-	<img src="https://img.shields.io/badge/Python-3.8%2B-green?style=flat-square" alt="Python Badge" />
-	<img src="https://img.shields.io/badge/Offline-Ready-orange?style=flat-square" alt="Offline Badge" />
-  
-	<p><b>A simple command-line wiki that allows you to store, search and manage knowledge entries.</b></p>
-	<p><i>Think of it as a personal offline encyclopedia, perfect for notes, lore, worldbuilding or study material.</i></p>
-</div>
+A simple command-line wiki that allows you to store, search and manage knowledge entries.
 
+Think of it as a personal offline encyclopedia, perfect for notes, lore, worldbuilding or study material.
+
+[![CLI Tool](https://img.shields.io/badge/CLI-Tool-blue.svg)](https://github.com)
+[![Python](https://img.shields.io/badge/Python-3.8%2B-green.svg)](https://python.org/)
+[![Offline Ready](https://img.shields.io/badge/Offline-Ready-orange.svg)](https://github.com)
 
 ---
 
