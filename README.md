@@ -38,8 +38,6 @@ mini_wiki/
 │   │── db_handler.py      # database connection, schema setup
 │   │── crud.py            # create, read, update, delete functions
 │   │── cli.py             # command-line interface (menus, prompts)
-│── tests/
-│   └── test_crud.py       # unit tests for CRUD operations
 └── .gitignore             # ignore db files, pycache, etc.
 ```
 
