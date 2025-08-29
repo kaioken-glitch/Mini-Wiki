@@ -29,7 +29,6 @@ Think of it as a personal offline encyclopedia, perfect for notes, lore, worldbu
 ```text
 mini_wiki/
 │── README.md              # project description & usage
-│── requirements.txt       # dependencies (optional, sqlite3 is built-in)
 │── main.py                # entry point for the CLI
 │── db/
 │   └── wiki.db            # SQLite database file (auto-created on first run)
@@ -38,6 +37,7 @@ mini_wiki/
 │   │── db_handler.py      # database connection, schema setup
 │   │── crud.py            # create, read, update, delete functions
 │   │── cli.py             # command-line interface (menus, prompts)
+│   └── entry.py           # entry data model
 └── .gitignore             # ignore db files, pycache, etc.
 ```
 
