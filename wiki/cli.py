@@ -21,7 +21,7 @@ class WikiCLI:
             db_handler: DatabaseHandler instance
         """
         self.db_handler = db_handler
-        self.crud = WikiCRUD(db_handler.get_connection())
+        self.crud = WikiCRUD(db_handler)
         self.running = True
     
     def run(self) -> None:
@@ -185,8 +185,12 @@ class WikiCLI:
             for entry in entries:
                 print(f"\n[{entry.id}] {entry.title}")
                 print(f"Category: {entry.category}")
+                print(f"Author: {entry.author} | Views: {entry.views}")
                 print(f"Preview: {entry.get_preview(80)}")
-                print(f"Created: {entry.created_at[:19].replace('T', ' ')}")
+                print(f"Created: {entry.created_at.strftime('%Y-%m-%d %H:%M:%S') if hasattr(entry.created_at, 'strftime') else str(entry.created_at)[:19]}")
+                if entry.tags:
+                    tag_names = [tag.name for tag in entry.tags]
+                    print(f"Tags: {', '.join(tag_names)}")
                 print("-" * 40)
             
             # Option to view full entry
@@ -209,8 +213,12 @@ class WikiCLI:
             print(f"📖 {entry.title}")
             print("=" * 60)
             print(f"Category: {entry.category}")
-            print(f"Created: {entry.created_at[:19].replace('T', ' ')}")
-            print(f"Updated: {entry.updated_at[:19].replace('T', ' ')}")
+            print(f"Author: {entry.author} | Views: {entry.views}")
+            print(f"Created: {entry.created_at.strftime('%Y-%m-%d %H:%M:%S') if hasattr(entry.created_at, 'strftime') else str(entry.created_at)[:19]}")
+            print(f"Updated: {entry.updated_at.strftime('%Y-%m-%d %H:%M:%S') if hasattr(entry.updated_at, 'strftime') else str(entry.updated_at)[:19]}")
+            if entry.tags:
+                tag_names = [tag.name for tag in entry.tags]
+                print(f"Tags: {', '.join(tag_names)}")
             print("-" * 60)
             print(entry.content)
             print("=" * 60)
@@ -240,7 +248,11 @@ class WikiCLI:
             for entry in entries:
                 print(f"\n[{entry.id}] {entry.title}")
                 print(f"Category: {entry.category}")
+                print(f"Author: {entry.author} | Views: {entry.views}")
                 print(f"Preview: {entry.get_preview(80)}")
+                if entry.tags:
+                    tag_names = [tag.name for tag in entry.tags]
+                    print(f"Tags: {', '.join(tag_names)}")
                 print("-" * 40)
             
             # Option to view full entry
@@ -361,6 +373,7 @@ class WikiCLI:
             print(f"💾 Size: {db_info['db_size_mb']} MB")
             print(f"📝 Total entries: {entry_count}")
             print(f"🏷️ Categories: {len(categories)}")
+            print(f"🏆 Tags: {db_info['tags_count']}")
             
             if categories:
                 print("\nCategories:")

@@ -1,197 +1,208 @@
 """
 CRUD Operations for Mini-Wiki
-Handles Create, Read, Update, Delete operations for wiki entries.
+Handles Create, Read, Update, Delete operations for wiki entries using SQLAlchemy ORM.
 """
 
-import sqlite3
 from typing import List, Optional
 from datetime import datetime
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import or_, func
 
-from .entry import WikiEntry
+from .models import Entry, Category, Tag
+from .db_handler import DatabaseHandler
 
 
 class WikiCRUD:
-    """Handles all CRUD operations for wiki entries."""
+    """Handles all CRUD operations for wiki entries using SQLAlchemy ORM."""
     
-    def __init__(self, db_connection: sqlite3.Connection):
-        """Initialize CRUD operations with database connection."""
-        self.conn = db_connection
+    def __init__(self, db_handler: DatabaseHandler):
+        """Initialize CRUD operations with database handler."""
+        self.db_handler = db_handler
     
-    def create_entry(self, title: str, category: str, content: str) -> WikiEntry:
+    def create_entry(self, title: str, category_name: str, content: str, author: str = "Anonymous") -> Entry:
         """
-        Create a new wiki entry.
+        Create a new wiki entry using SQLAlchemy ORM.
         
         Args:
             title: The title of the entry
-            category: The category of the entry
+            category_name: The category name for the entry
             content: The content of the entry
+            author: The author of the entry
             
         Returns:
-            WikiEntry: The created entry with assigned ID
+            Entry: The created entry with assigned ID
             
         Raises:
-            sqlite3.Error: If database operation fails
+            SQLAlchemyError: If database operation fails
         """
+        session = self.db_handler.get_session()
         try:
-            cursor = self.conn.cursor()
-            now = datetime.now().isoformat()
+            # Get or create category
+            category = session.query(Category).filter_by(name=category_name).first()
+            if not category:
+                category = Category(name=category_name, description=f"Auto-created category: {category_name}")
+                session.add(category)
+                session.flush()  # Get the ID
             
-            cursor.execute("""
-                INSERT INTO entries (title, category, content, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (title, category, content, now, now))
-            
-            self.conn.commit()
-            entry_id = cursor.lastrowid
-            
-            return WikiEntry(
-                id=entry_id,
+            # Create entry with SQLAlchemy logic
+            entry = Entry(
                 title=title,
-                category=category,
                 content=content,
-                created_at=now,
-                updated_at=now
+                category_id=category.id,
+                author=author
             )
             
-        except sqlite3.Error as e:
-            self.conn.rollback()
-            raise sqlite3.Error(f"Failed to create entry: {e}")
+            session.add(entry)
+            session.commit()
+            
+            # Refresh to get the generated ID and relationships
+            session.refresh(entry)
+            return entry
+            
+        except SQLAlchemyError as e:
+            session.rollback()
+            raise SQLAlchemyError(f"Failed to create entry: {e}")
+        finally:
+            session.close()
     
-    def get_entry_by_id(self, entry_id: int) -> Optional[WikiEntry]:
+    def get_entry_by_id(self, entry_id: int) -> Optional[Entry]:
         """
-        Retrieve a single entry by its ID.
+        Retrieve a single entry by its ID using SQLAlchemy ORM.
         
         Args:
             entry_id: The ID of the entry to retrieve
             
         Returns:
-            WikiEntry or None: The entry if found, None otherwise
+            Entry or None: The entry if found, None otherwise
         """
+        session = self.db_handler.get_session()
         try:
-            cursor = self.conn.cursor()
-            cursor.execute("""
-                SELECT id, title, category, content, created_at, updated_at
-                FROM entries WHERE id = ?
-            """, (entry_id,))
+            entry = session.query(Entry).filter_by(id=entry_id).first()
+            if entry:
+                # Apply SQLAlchemy logic - increment views
+                entry.increment_views()
+                session.commit()
+            return entry
             
-            row = cursor.fetchone()
-            if row:
-                return WikiEntry(*row)
-            return None
-            
-        except sqlite3.Error as e:
-            raise sqlite3.Error(f"Failed to retrieve entry: {e}")
+        except SQLAlchemyError as e:
+            session.rollback()
+            raise SQLAlchemyError(f"Failed to retrieve entry: {e}")
+        finally:
+            session.close()
     
-    def get_all_entries(self, category: str = None) -> List[WikiEntry]:
+    def get_all_entries(self, category_name: str = None) -> List[Entry]:
         """
-        Retrieve all entries, optionally filtered by category.
+        Retrieve all entries using SQLAlchemy ORM, optionally filtered by category.
         
         Args:
-            category: Optional category filter
+            category_name: Optional category filter
             
         Returns:
-            List[WikiEntry]: List of all matching entries
+            List[Entry]: List of all matching entries
         """
+        session = self.db_handler.get_session()
         try:
-            cursor = self.conn.cursor()
+            query = session.query(Entry)
             
-            if category:
-                cursor.execute("""
-                    SELECT id, title, category, content, created_at, updated_at
-                    FROM entries WHERE category = ?
-                    ORDER BY created_at DESC
-                """, (category,))
-            else:
-                cursor.execute("""
-                    SELECT id, title, category, content, created_at, updated_at
-                    FROM entries ORDER BY created_at DESC
-                """)
+            if category_name:
+                # Join with category table for filtering
+                query = query.join(Category).filter(Category.name == category_name)
             
-            rows = cursor.fetchall()
-            return [WikiEntry(*row) for row in rows]
+            # Order by creation date (most recent first)
+            entries = query.order_by(Entry.created_at.desc()).all()
+            return entries
             
-        except sqlite3.Error as e:
-            raise sqlite3.Error(f"Failed to retrieve entries: {e}")
+        except SQLAlchemyError as e:
+            raise SQLAlchemyError(f"Failed to retrieve entries: {e}")
+        finally:
+            session.close()
     
-    def search_entries(self, keyword: str) -> List[WikiEntry]:
+    def search_entries(self, keyword: str) -> List[Entry]:
         """
-        Search for entries containing the keyword in title, category, or content.
+        Search for entries using SQLAlchemy ORM with OR conditions.
         
         Args:
             keyword: The search keyword
             
         Returns:
-            List[WikiEntry]: List of matching entries
+            List[Entry]: List of matching entries
         """
+        session = self.db_handler.get_session()
         try:
-            cursor = self.conn.cursor()
             search_term = f"%{keyword}%"
             
-            cursor.execute("""
-                SELECT id, title, category, content, created_at, updated_at
-                FROM entries 
-                WHERE title LIKE ? OR category LIKE ? OR content LIKE ?
-                ORDER BY created_at DESC
-            """, (search_term, search_term, search_term))
+            # Use SQLAlchemy ORM with OR conditions and joins
+            entries = session.query(Entry).join(Category).filter(
+                or_(
+                    Entry.title.like(search_term),
+                    Entry.content.like(search_term),
+                    Category.name.like(search_term)
+                )
+            ).order_by(Entry.created_at.desc()).all()
             
-            rows = cursor.fetchall()
-            return [WikiEntry(*row) for row in rows]
+            return entries
             
-        except sqlite3.Error as e:
-            raise sqlite3.Error(f"Failed to search entries: {e}")
+        except SQLAlchemyError as e:
+            raise SQLAlchemyError(f"Failed to search entries: {e}")
+        finally:
+            session.close()
     
     def update_entry(self, entry_id: int, title: str = None, 
-                    category: str = None, content: str = None) -> Optional[WikiEntry]:
+                    category_name: str = None, content: str = None, author: str = None) -> Optional[Entry]:
         """
-        Update an existing entry.
+        Update an existing entry using SQLAlchemy ORM.
         
         Args:
             entry_id: The ID of the entry to update
             title: New title (optional)
-            category: New category (optional)
+            category_name: New category name (optional)
             content: New content (optional)
+            author: New author (optional)
             
         Returns:
-            WikiEntry or None: The updated entry if successful, None if not found
+            Entry or None: The updated entry if successful, None if not found
         """
+        session = self.db_handler.get_session()
         try:
-            # First check if entry exists
-            existing_entry = self.get_entry_by_id(entry_id)
-            if not existing_entry:
+            # Get entry using SQLAlchemy ORM
+            entry = session.query(Entry).filter_by(id=entry_id).first()
+            if not entry:
                 return None
             
-            # Prepare update values (keep existing values if not provided)
-            new_title = title if title is not None else existing_entry.title
-            new_category = category if category is not None else existing_entry.category
-            new_content = content if content is not None else existing_entry.content
-            new_updated_at = datetime.now().isoformat()
+            # Update fields if provided
+            if title is not None:
+                entry.title = title
             
-            cursor = self.conn.cursor()
-            cursor.execute("""
-                UPDATE entries 
-                SET title = ?, category = ?, content = ?, updated_at = ?
-                WHERE id = ?
-            """, (new_title, new_category, new_content, new_updated_at, entry_id))
+            if category_name is not None:
+                # Get or create category
+                category = session.query(Category).filter_by(name=category_name).first()
+                if not category:
+                    category = Category(name=category_name, description=f"Auto-created category: {category_name}")
+                    session.add(category)
+                    session.flush()
+                entry.category_id = category.id
             
-            self.conn.commit()
+            if content is not None:
+                entry.content = content
+                
+            if author is not None:
+                entry.author = author
             
-            # Return updated entry
-            return WikiEntry(
-                id=entry_id,
-                title=new_title,
-                category=new_category,
-                content=new_content,
-                created_at=existing_entry.created_at,
-                updated_at=new_updated_at
-            )
+            # SQLAlchemy will automatically update the updated_at timestamp due to onupdate
+            session.commit()
             
-        except sqlite3.Error as e:
-            self.conn.rollback()
-            raise sqlite3.Error(f"Failed to update entry: {e}")
+            return entry
+            
+        except SQLAlchemyError as e:
+            session.rollback()
+            raise SQLAlchemyError(f"Failed to update entry: {e}")
+        finally:
+            session.close()
     
     def delete_entry(self, entry_id: int) -> bool:
         """
-        Delete an entry by its ID.
+        Delete an entry using SQLAlchemy ORM.
         
         Args:
             entry_id: The ID of the entry to delete
@@ -199,43 +210,109 @@ class WikiCRUD:
         Returns:
             bool: True if deleted successfully, False if not found
         """
+        session = self.db_handler.get_session()
         try:
-            cursor = self.conn.cursor()
-            cursor.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
-            self.conn.commit()
+            entry = session.query(Entry).filter_by(id=entry_id).first()
+            if not entry:
+                return False
             
-            return cursor.rowcount > 0
+            session.delete(entry)
+            session.commit()
+            return True
             
-        except sqlite3.Error as e:
-            self.conn.rollback()
-            raise sqlite3.Error(f"Failed to delete entry: {e}")
+        except SQLAlchemyError as e:
+            session.rollback()
+            raise SQLAlchemyError(f"Failed to delete entry: {e}")
+        finally:
+            session.close()
     
     def get_entry_count(self) -> int:
         """
-        Get the total number of entries.
+        Get the total number of entries using SQLAlchemy ORM.
         
         Returns:
             int: Total number of entries
         """
+        session = self.db_handler.get_session()
         try:
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM entries")
-            return cursor.fetchone()[0]
+            count = session.query(func.count(Entry.id)).scalar()
+            return count
             
-        except sqlite3.Error as e:
-            raise sqlite3.Error(f"Failed to count entries: {e}")
+        except SQLAlchemyError as e:
+            raise SQLAlchemyError(f"Failed to count entries: {e}")
+        finally:
+            session.close()
     
     def get_categories(self) -> List[str]:
         """
-        Get all unique categories.
+        Get all unique categories using SQLAlchemy ORM.
         
         Returns:
-            List[str]: List of unique categories
+            List[str]: List of unique category names
         """
+        session = self.db_handler.get_session()
         try:
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT DISTINCT category FROM entries ORDER BY category")
-            return [row[0] for row in cursor.fetchall()]
+            categories = session.query(Category.name).order_by(Category.name).all()
+            return [cat[0] for cat in categories]
             
-        except sqlite3.Error as e:
-            raise sqlite3.Error(f"Failed to retrieve categories: {e}")
+        except SQLAlchemyError as e:
+            raise SQLAlchemyError(f"Failed to retrieve categories: {e}")
+        finally:
+            session.close()
+    
+    def add_tag_to_entry(self, entry_id: int, tag_name: str, color: str = "#3498db") -> bool:
+        """
+        Add a tag to an entry using SQLAlchemy ORM relationships.
+        
+        Args:
+            entry_id: The entry ID
+            tag_name: The tag name
+            color: The tag color (hex code)
+            
+        Returns:
+            bool: True if successful
+        """
+        session = self.db_handler.get_session()
+        try:
+            entry = session.query(Entry).filter_by(id=entry_id).first()
+            if not entry:
+                return False
+            
+            # Get or create tag
+            tag = session.query(Tag).filter_by(name=tag_name).first()
+            if not tag:
+                tag = Tag(name=tag_name, color=color)
+                session.add(tag)
+            
+            # Add tag to entry if not already present
+            if tag not in entry.tags:
+                entry.tags.append(tag)
+            
+            session.commit()
+            return True
+            
+        except SQLAlchemyError as e:
+            session.rollback()
+            raise SQLAlchemyError(f"Failed to add tag: {e}")
+        finally:
+            session.close()
+    
+    def get_entries_by_tag(self, tag_name: str) -> List[Entry]:
+        """
+        Get all entries with a specific tag using SQLAlchemy ORM relationships.
+        
+        Args:
+            tag_name: The tag name
+            
+        Returns:
+            List[Entry]: List of entries with the tag
+        """
+        session = self.db_handler.get_session()
+        try:
+            entries = session.query(Entry).join(Entry.tags).filter(Tag.name == tag_name).all()
+            return entries
+            
+        except SQLAlchemyError as e:
+            raise SQLAlchemyError(f"Failed to get entries by tag: {e}")
+        finally:
+            session.close()
